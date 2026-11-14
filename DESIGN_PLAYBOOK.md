@@ -1,10 +1,76 @@
 # Roblox Game Design Bible — Research Playbook and Action Plan
 
-**Status:** Research-backed, provisional implementation design — **awaiting source-code audit and owner approval**  
+**Status:** Tailored to owner-described **Guess the Food** — **awaiting source-code audit and owner approval**  
 **Date:** 14 November 2026  
 **Repository inspected:** https://github.com/cutieyousie-netizen/yousif (default branch: main)
 
-> **Audit limitation:** The connected repository has only README.md (containing "# yousif" and "roblox"). There are **no game scripts or configurations** to inspect. Genre, feature inventory, architecture and current code quality are therefore **unknown**. Every path marked **PROPOSED** below is a suggested future module, **not an existing file**. Do not treat the actions as evidence that the game has any particular feature or bug. No gameplay code has been changed.
+> **Audit limitation:** The connected repository contains README.md and this playbook, but **no game scripts or Roblox configurations**. The owner has described the game genre, loop and features. These are an **owner-provided game brief**, not a code audit. Every path marked **PROPOSED** below is a suggested future module, not an existing file. No gameplay code has been changed.
+
+## Guess the Food — game-specific design brief and targeted audit plan
+
+**Source:** Owner's description of Guess the Food, supplied 14 November 2026. These mechanics are understood from that description but **not verified in the repository**.
+
+### One-sentence player-facing pitch
+
+**A food lands on a plate; run to the country it comes from—get it wrong and you're eliminated. Last player standing wins.**
+
+This is a **physical, three-zone choice game**, not a multiple-choice quiz where someone clicks a UI option. A 3D food is lowered onto a plate, three different countries are offered, and players physically move their Roblox avatars onto the country they believe the food originates from. Choosing wrongly kills/eliminates the player. Survive until the end to win.
+
+**Primary loop:** Lobby -> Vote for mode -> Food reveal -> Move to one of three country zones -> Answer locks -> Wrong guesses eliminated -> Next food -> Last surviving player wins -> Winner podium -> Coins/cosmetics -> Requeue.
+
+**Owner-described additional modes/features:** Food Memory, Solo Practice, Coins, a Shop, food-themed trails (Burger, Pizza, Flying Fries), titles (including Lucky Legend), emotes (Snack Break is free; other examples include Food King, Royal Throne, Popcorn Explosion), winner/podium effects (Golden Champion, Golden Burger Burst, Royal Throne, Popcorn Explosion), Spin Wheel (100 Coins or a free-spin credit, with Coins/cosmetics/free-spin outcomes), daily rewards and stats (wins, rounds, correct answers, streaks). These may be implemented, but their runtime behaviour is unverified. Do not invent exact Food Memory rules beyond the described memory challenge.
+
+### Design guardrails specific to this game
+
+1. **Preserve the movement-to-answer mechanic.** This physical rush to commit to a zone is the core differentiator; do not replace it with UI buttons or remove elimination without approval.
+2. **Food clarity:** the lowering animation must be short, readable and consistent; foods should have recognisable silhouettes and enough light to inspect.
+3. **Country readability:** display country **name and flag**, not only colours or flags, and ensure all three zones are equally easy to reach from typical player positions on mobile/controller.
+4. **Fair answer lock:** a server-controlled deadline decides the player's current zone once. Test zone boundaries, overlapping regions, late movers, disconnects and lag. A local HUD can predict highlights, but cannot authoritatively decide who dies.
+5. **Origin accuracy:** international food history can be debated. Curate a reviewed answer bank, record evidence for each attribution, and omit ambiguous origins or accept defensible alternatives. Players should never feel a researched correct answer unfairly killed them.
+6. **Elimination downtime:** allow immediate spectating, practice while waiting or a clear next-round countdown. Do not leave eliminated players looking at a blank screen.
+7. **Keep matches fast:** reward a correct answer with instant feedback and brief explanation; avoid long unskippable reveals and winner podiums.
+8. **Don't monetise survival or correct answers.** Cosmetics, presentation and optional convenience fit the knowledge-based competition better than pay-to-win revives, invulnerability or purchased answers.
+
+### First-time session hypothesis to test
+
+- **0–5 seconds:** Spawn with a legible summary: "Watch the food. Stand on the country it comes from. Wrong answer = eliminated." Make the match countdown and practice accessible.
+- **First reveal:** Camera frames a food physically lowered onto a plate, then makes the three answer zones visually salient. Start a fair response timer only once food and country labels are visible.
+- **First choice:** As players walk into a zone, the zone highlights locally and the HUD confirms the selected country's name. Permit changes until the server cutoff.
+- **Resolution:** Clear cue that answers are locked; highlight the correct country; celebrate survivors lightly; eliminated players get the correct answer and their next action.
+- **After elimination:** Show spectate / short practice / next match ETA, with an easy requeue path. Avoid revealing answers to someone who can still re-enter the live match.
+- **First lobby return:** Display Coins earned, unlock progress and a prominent play-again route. Shop and Spin Wheel should not interrupt the round itself.
+
+The seconds are **test targets, not Roblox mandates**; actual pacing should be based on fresh-player observation and device tests.
+
+### Prioritized script-level plan — paths PROPOSED, not existing files
+
+| ID / priority | Technique and source | Why it matters | Specific proposed Luau / system mapping | Check |
+|---|---|---|---|---|
+| **GT01 / P0** | Immediate onboarding, contextual hints — Roblox Onboarding Techniques; owner-supplied Raise Anomaly post-mortem | Prevents confusion and first-play bounce | **PROPOSED** src/client/Controllers/OnboardingController.luau + RoundHUDController.luau: one-sentence first-round hint; visual pointers to the real answer zones; dismiss when first zone is entered | New players identify the goal and reach a zone unaided |
+| **GT02 / P0** | Legible food reveal and three choices — Roblox Mobile UI/UX RDC/Learn content | Tiny countries, obscured models and unfair walking distances lose mobile players | **PROPOSED** FoodRevealController.luau and RoundHUDController.luau; food spotlight, model silhouette check, readable country text/flags, safe insets, countdown when ready; balanced zone reachability | Touch and console users can see/choose all three on low-end devices |
+| **GT03 / P0** | Authoritative zone locking — Roblox server-authority guidance | Avoids arbitrary deaths and exploits | **PROPOSED** src/server/Services/RoundService.luau + AnswerZoneService.luau; server tracks question ID, valid answers, zone occupancy and lock time; resolves overlap/no-zone/mid-crossing explicitly; applies elimination exactly once | Deterministic replay tests under latency, double triggers and disconnects |
+| **GT04 / P0** | Post-death activity — Roblox retention/LiveOps principles | Elimination creates unavoidable downtime; inactivity can cause exits | **PROPOSED** SpectatorController.luau + PracticeController.luau; spectate remaining players, practice a separate question bank, prominent next match timer | Drop in departures within 30 seconds of elimination |
+| **GT05 / P0** | First-match and progression funnels — RDC 2024 Using Analytics; owner Hack a Business methods | Reveals the actual biggest user-loss step | **PROPOSED** src/server/Services/AnalyticsService.luau; stable events: Join, Queue, EnterRound, FoodRevealed, ZoneEntered, AnswerLocked, Survived/Eliminated, Spectate/Practice, Winner, Requeue. Segment by device, question, mode and server size | Every main stage tracked; first major drop-off identified |
+| **GT06 / P0** | Validated country origin catalog — answer fairness / question-quality design | Unfair or disputed trivia kills trust in the elimination | **PROPOSED** src/shared/FoodQuestionCatalog.luau with dish ID, model ID, choice country IDs, acceptable correct ID(s), difficulty, source/reference and review status | No unreviewed ambiguous origins in release bank |
+| **GT07 / P1** | Responsive 'juice' — Roblox animation/feedback and accessibility documentation | Reinforces physical movement, answer commitment and survival | **PROPOSED** src/client/Controllers/FeedbackController.luau: short landing audio, zone-entry highlight tween, answer-lock cue, correct/incorrect feedback, optional brief celebration; reduce motion and effect count on weak phones | Per-action feedback feels clear with no low-end FPS regression |
+| **GT08 / P1** | Difficulty curve and progression — Roblox Core Loops; owner Raise Anomaly progression tests | Obscure questions too early can feel random; same difficulty forever becomes boring | **PROPOSED** src/shared/QuestionDifficultyConfig.luau and question stats; start with common foods, then vary difficulty and choice plausibility according to survival stage, monitored via actual correct rates | First round completion and rematch rate improve |
+| **GT09 / P1** | Useful Practice Mode — Roblox FTUE/retention principles | Gives new, eliminated or waiting players a way to engage | **PROPOSED** existing Solo Practice system once located; feed it clearly separate questions and preserve the same movement/selection skill where applicable | Better lobby retention and post-elimination requeue |
+| **GT10 / P1** | Ethical Coins, cosmetics and shop — Roblox monetization foundations | Shop should support identity and winning celebration rather than pay for answers | **PROPOSED** PurchaseService.luau + CosmeticInventoryService.luau; validate inventory and currency on server, idempotent ProcessReceipt for dev products, transparent offers after match | Purchases granted exactly once, no F2P unfair disadvantage |
+| **GT11 / P1** | Spin Wheel and daily reward reliability — Roblox LiveOps, server-authoritative economy | Gives non-coercive return incentives and avoids reward duplication | **PROPOSED** review actual Spin Wheel/DailyRewards systems once source is available; preserve 100-Coin/free-credit rule; server rolls and grants prizes, tracks claim timestamps and persistent stats | No duplicate grants; rewards visible without disrupting match |
+| **GT12 / P2** | Social winner moment and rapid replay — Roblox social play / live events | The funny reaction to a wrong choice is shareable; replay makes the social loop sustainable | **PROPOSED** match summary UI + existing Podium system once found; concise last-survivor celebration, fair correct-answer reveal, optional spectating and clear rematch flow | Higher replay, friends joining, sharing without longer idle wait |
+
+### Genre-specific metrics
+
+**Primary:** First-match join rate, first reveal -> first answer zone entered, first zone -> valid locked answer, first elimination -> 30-second exit rate, replay/requeue rate, average rounds survived, question correctness and answer cutoff failures.
+
+**Secondary:** Average session duration, D1/D7 by acquisition cohort, practice use, cosmetic engagement, match length, low-end phone frame rate, crash rate and organic Home recommendation acquisition.
+
+**Must segment:** phone vs tablet vs desktop vs console; new vs veteran users; live player count; food difficulty; Country vs Food Memory mode.
+
+### Approval boundary
+
+The repo's real Roblox source is still absent. The table above maps recommendations to **known game subsystems from the owner's description and proposed Luau file paths**, not to inspected scripts. A final file-by-file audit still requires an uploaded Studio project (.rbxl/.rbxlx) or an actual Luau/Rojo repository. **Do not implement game code until the owner approves a confirmed, script-mapped plan.**
+
 
 ## 0. Evidence and research method
 
@@ -281,11 +347,11 @@ The provided developer transcripts gave concrete examples, but their claimed num
 | Audit item | Finding |
 |---|---|
 | Repository identity | cutieyousie-netizen/yousif, public, main |
-| Root tree | README.md only |
+| Root tree | README.md and DESIGN_PLAYBOOK.md; no game scripts |
 | README contents | "# yousif" and "roblox" |
 | Project format | Unknown: no .rbxl/.rbxlx, Rojo project, scripts or other game files |
-| Game genre and core loop | Unknown |
-| Existing FTUE, HUD, remotes, data, monetization, VFX | Not inspectable |
+| Game genre and core loop | Owner-described Guess the Food: 3D food lowered onto plate; 3 country answer zones; move/stand on the believed origin; wrong answers eliminate, last survivor wins (not code-verified) |
+| Existing FTUE, HUD, remotes, data, monetization, VFX | Owner describes Practice, Coins, cosmetics, wheel, stats and daily rewards; actual scripts not inspectable |
 | Actual script-to-recommendation mapping | **Blocked**: do not invent existing file references |
 | Code changes | **None** |
 | Proposed module architecture | Documented above, not implemented |
